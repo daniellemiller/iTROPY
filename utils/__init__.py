@@ -20,7 +20,6 @@ if missing_dependencies:
     raise ImportError(
         "Unable to import required dependencies:\n" + "\n".join(missing_dependencies))
 
-
-__all__ = []
+__all__ = ["pipeline", "dropplot", "profileplot"]
 
 __doc__ = "type here doc"
