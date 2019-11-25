@@ -292,6 +292,50 @@ def generate_train_matrix(seq, w=200):
     mat = reduce(lambda left,right: pd.merge(left,right, on=['position']), dfs)
     return mat
 
+def generate_list_of_sequetial_positions(drops):
+    """
+    create a list of positions [start_i, end_i for i in drops]
+    :param drops: a data frame of a single sequence drops information
+    :return: a list of all positions
+    """
+    l_start = drops['start'].values
+    l_end = drops['end'].values
+
+    l_combined = []
+    for i in range(len(l_start)):
+        l_combined.append(l_start[i])
+        l_combined.append(l_end[i])
+    return np.array(l_combined)
+
+def get_drop_id_by_pos(pos, drops):
+    """
+    merge between drop position and
+    :param pos:
+    :param drops:
+    :return:
+    """
+
+    all_drop_positions = generate_list_of_sequetial_positions(drops)
+    pos_idx = all_drop_positions.searchsorted(pos)
+
+    # check if its between drops or within drop
+    set_start = -1
+    set_end = -1
+
+    if pos_idx % 2 != 0: # within drop
+        set_start = all_drop_positions[pos_idx - 1]
+        set_end = all_drop_positions[min(pos_idx, all_drop_positions.shape[0] - 1)]
+    else:
+        if pos in all_drop_positions:
+            set_start = pos
+            set_end = all_drop_positions[min(pos_idx + 1, all_drop_positions.shape[0] - 1)]
+
+    if set_start == -1 or set_end == -1:
+        return "no drop"
+    else:
+        val = drops[(drops['start'] == set_start) & (drops['end'] == set_end)]['drop_id'].values[0]
+        return val
+
 def fit_GMM(train, k=4, dim_reduction=False):
     """
     fits GMM model to a given matrix
@@ -394,8 +438,24 @@ def pipeline(seq, k = 5, w = 200, l = 100, out=None):
     else:
         drops = find_sequential_drops(shannon, joint, output=None)
 
+    cols_2_consider = ['Shannon_k{}'.format(k) for k in [1, 2, 3, 4, 5]] + ['Joint_k{}'.format(k) for k in
+                                                                            [1, 2, 3, 4, 5]] + ['DeltaG', 'position']
 
+    drops['drop_id'] = drops.apply(lambda row: "Drop {}".format(row.name), axis=1)
 
+    X['drop_id'] = X['position'].apply(lambda x: get_drop_id_by_pos(x, drops))
+    train_drops = X[X['drop_id'] != 'no drop']
+    gmm_clusterd = fit_GMM(train_drops[cols_2_consider])
+    merged = pd.merge(gmm_clusterd, train_drops[['position', 'seq_id', 'drop_id', 'median_conservation']])
 
+    # add ranks to each drop
+    score_2_cluster = []
+    for cluster in ["0", "1", "2", "3"]:
+        score_2_cluster.append(tuple((cluster, cluster_score(merged[merged['GMM_clusters'] == cluster]))))
 
+    ranking = score_to_rank(score_2_cluster)
+    merged['rank'] = merged['GMM_clusters'].apply(lambda x: ranking[x])
+    if out != None:
+        merged.to_csv(os.path.join(out, 'clustered_and_ranked.csv'), index=False)
 
+    return merged
