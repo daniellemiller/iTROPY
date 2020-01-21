@@ -164,11 +164,13 @@ def _scrambler(word):
     new_word = ''.join(word_to_scramble)
     return new_word
 
+
 def scrambler(word):
    new_word = _scrambler(word)
    while new_word == word and len(word) > 1:
        new_word = _scrambler(word)
    return new_word
+
 
 ### profiles generator ###
 def get_joint_entropy_profile_per_sequence(seq, w, alias, k=5, out=None):
@@ -179,7 +181,6 @@ def get_joint_entropy_profile_per_sequence(seq, w, alias, k=5, out=None):
     :param out: optional. if != None a profile will be saved as a png
     :return: the vector of profile entropy
     """
-
     entropies = []
     # get identifier and genomic sequence
     genome = seq
@@ -198,6 +199,7 @@ def get_joint_entropy_profile_per_sequence(seq, w, alias, k=5, out=None):
         df.to_csv(os.path.join(out, '{}_Joint_profile.csv'.format(alias)), index=False)
 
     return df
+
 
 def get_entropy_profile_per_sequence(seq, w, alias, k=5, out=None):
     """
@@ -224,6 +226,7 @@ def get_entropy_profile_per_sequence(seq, w, alias, k=5, out=None):
 
     return df
 
+
 def deltaG_calculator(seq):
     """
     calculate the minimum free energy (G) for a given sequence
@@ -232,6 +235,7 @@ def deltaG_calculator(seq):
     """
     ss, mfe = RNA.fold(seq)
     return mfe
+
 
 def deltaG_profile_per_sequence(seq, w, alias, out=None):
     """
@@ -254,6 +258,7 @@ def deltaG_profile_per_sequence(seq, w, alias, out=None):
         df.to_csv(os.path.join(out, '{}_deltaG_profile.csv'.format(alias)), index=False)
 
     return df
+
 
 def generate_train_matrix(seq, w=200):
     """
@@ -292,6 +297,7 @@ def generate_train_matrix(seq, w=200):
     mat = reduce(lambda left,right: pd.merge(left,right, on=['position']), dfs)
     return mat
 
+
 def generate_list_of_sequetial_positions(drops):
     """
     create a list of positions [start_i, end_i for i in drops]
@@ -306,6 +312,7 @@ def generate_list_of_sequetial_positions(drops):
         l_combined.append(l_start[i])
         l_combined.append(l_end[i])
     return np.array(l_combined)
+
 
 def get_drop_id_by_pos(pos, drops):
     """
@@ -336,50 +343,49 @@ def get_drop_id_by_pos(pos, drops):
         val = drops[(drops['start'] == set_start) & (drops['end'] == set_end)]['drop_id'].values[0]
         return val
 
-def fit_GMM(train, k=4, dim_reduction=False):
+def _intersect(start,end, drops):
     """
-    fits GMM model to a given matrix
-    :param train:
-    :param dim_reduction: indicator whether or not to remove the dimension
-    :param k: number of clusters. default 4
-    :return: a data frame containing cluster assignments
+    helper function for overlap detection
     """
-
-    if dim_reduction:
-        encoding_dim = 2
-        input_data = Input(shape=(train.shape[1],))
-
-        # Define encoding layer
-        encoded = Dense(encoding_dim, activation='elu')(input_data)
-
-        # Define decoding layer
-        decoded = Dense(train.shape[1], activation='sigmoid')(encoded)
-
-        encoder = Model(inputs=input_data, outputs=encoded)
-        encoded_train = pd.DataFrame(encoder.predict(train))
-        encoded_train.rename(columns={0: 'principal component 1', 1: 'principal component 2'}, inplace=True)
-        gmm = GaussianMixture(n_components=k)
-        gmm.fit(encoded_train)
-        clusters_gmm = gmm.predict(train)
-        proba = gmm.predict_proba(train)
-        train['GMM_clusters'] = clusters_gmm
-
-    else:
-        gmm = GaussianMixture(n_components=k)
-        gmm.fit(train)
-        clusters_gmm = gmm.predict(train)
-        proba = gmm.predict_proba(train)
-        train['GMM_clusters'] = clusters_gmm
+    d = drops[drops['start'] < end]
+    d['inter'] = d.apply(lambda row:len(list(set(range(start, end + 1)) & set(range(row['start'], row['end'] + 1)))), axis=1)
+    #define pverlap as a minimun 1/3 cover
+    if d[d['inter'] >= (end-start+1)//3].shape[0] != 0:
+        return True
+    return False
 
 
-    # add the label as a string
-    train['GMM_clusters'] = train['GMM_clusters'].apply(lambda x: str(int(x)))
+def find_drops_overlaps(shannon, joint):
+    """
+    return a single drop file, combining shannon and joint
+    :param shannon: shannon drops
+    :param joint: joint drops
+    :return: a unite dataframe with -shhanon-joint overlaps only
+    """
+    s1 = shannon.copy()
+    j1 = joint.copy()
+    s1['isDrop'] = s1.apply(lambda row: _intersect(row['start'], row['end'], joint), axis=1)
+    s1['type'] = 'shannon-joint'
+    j1['isDrop'] = s1.apply(lambda row: _intersect(row['start'], row['end'], shannon), axis=1)
+    return pd.concat([s1[s1['isDrop'] == True], j1[j1['isDrop'] == False]]).\
+        reset_index(drop=True).drop(columns=['isDrop']).sort_values(by=['start','end'])
 
-    # add probabilities of each point to each cluster
-    for i in range(k):
-        train['prob_cluster_{}'.format(i)] = proba[:,i]
 
-    return train
+def rescale(value, max_range=0.6, min_range=0.3):
+    """
+    rescale deltaG values by random distribution
+    :param value: actual value
+    :param max_range: max range
+    :param min_range: min range
+    :return: rescaled value
+    """
+    scaled = value
+
+    if value > min_range:
+        scaled = (value) * (max_range - min_range) + min_range
+
+    return scaled
+
 
 def cluster_score(cluster):
     """
@@ -412,50 +418,37 @@ def score_to_rank(scores_mapping):
     cluster_2_rank = {tup[0]:sorted_scores.index(tup)+1 for tup in sorted_scores}
     return cluster_2_rank
 
-def pipeline(seq, k = 5, w = 200, l = 100, out=None):
+
+def extract_nucleotide_information(seq, start, end):
     """
-    run the pipeline to receive the drops per sequence
-    :param seq: a string
-    :param k: kmer size
-    :param w: sliding window size. default is 200
-    :param l: sliding window for drops permutation test. default is 100
-    :param out: optional - output directopry to save results
-    :return: a data frame containing all drops information and ranking
+    this function returns the relative nucleotide ratio comparing the the drop and to the entire genome
+    :param seq: genomic sequence
+    :param start: start position. int
+    :param end: end position. int
+    :return: a list with tuples for each nucleotide in the following order: A,C,G,T. (nuc relative in drop, nuc relative to genome)
     """
+    drop_sequence = seq[start: end + 1]
+    a_total = seq.count('a')
+    c_total = seq.count('c')
+    g_total = seq.count('g')
+    t_total = seq.count('t')
 
-    if k < 1 or w < k or l < k or type(seq) != str:
-        raise Exception ("Invalid input provided")
+    a_in_drop = drop_sequence.count('a')
+    c_in_drop = drop_sequence.count('c')
+    g_in_drop = drop_sequence.count('g')
+    t_in_drop = drop_sequence.count('t')
 
-    # generate the training matrix
-    X = generate_train_matrix(seq, w)
+    len_drop = len(drop_sequence)
 
-    # find significant entropy drops
-    shannon = stretchFinder(X['Shannon_k{}'.format(k)].values, l)
-    joint = stretchFinder(X['Joint_k{}'.format(k)].values, l)
+    a_rel_genome = a_in_drop / a_total
+    c_rel_genome = c_in_drop / c_total
+    g_rel_genome = g_in_drop / g_total
+    t_rel_genome = t_in_drop / t_total
 
-    if out != None:
-        drops = find_sequential_drops(shannon, joint, os.path.join(out, 'all_drops.csv'))
-    else:
-        drops = find_sequential_drops(shannon, joint, output=None)
+    a_rel_drop = a_in_drop / len_drop
+    c_rel_drop = c_in_drop / len_drop
+    g_rel_drop = g_in_drop / len_drop
+    t_rel_drop = t_in_drop / len_drop
 
-    cols_2_consider = ['Shannon_k{}'.format(k) for k in [1, 2, 3, 4, 5]] + ['Joint_k{}'.format(k) for k in
-                                                                            [1, 2, 3, 4, 5]] + ['DeltaG', 'position']
-
-    drops['drop_id'] = drops.apply(lambda row: "Drop {}".format(row.name), axis=1)
-
-    X['drop_id'] = X['position'].apply(lambda x: get_drop_id_by_pos(x, drops))
-    train_drops = X[X['drop_id'] != 'no drop']
-    gmm_clusterd = fit_GMM(train_drops[cols_2_consider])
-    merged = pd.merge(gmm_clusterd, train_drops[['position', 'seq_id', 'drop_id', 'median_conservation']])
-
-    # add ranks to each drop
-    score_2_cluster = []
-    for cluster in ["0", "1", "2", "3"]:
-        score_2_cluster.append(tuple((cluster, cluster_score(merged[merged['GMM_clusters'] == cluster]))))
-
-    ranking = score_to_rank(score_2_cluster)
-    merged['rank'] = merged['GMM_clusters'].apply(lambda x: ranking[x])
-    if out != None:
-        merged.to_csv(os.path.join(out, 'clustered_and_ranked.csv'), index=False)
-
-    return merged
+    return [(a_rel_genome, a_rel_drop), (c_rel_genome, c_rel_drop), (g_rel_genome, g_rel_drop),
+            (t_rel_genome, t_rel_drop)]
