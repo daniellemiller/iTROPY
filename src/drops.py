@@ -1,6 +1,8 @@
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OrdinalEncoder
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 from utils.utils import *
 from utils.stats_utils import stretchFinder
@@ -130,6 +132,36 @@ class Drops:
         self.drops = pd.merge(self.drops, self.X[['drop_id', 'rank']], on=['drop_id']).sort_values(by=['rank'])
 
 
+    def dropplot(self, feature='rank'):
+        mapping = {}
+        if feature not in self.X.columns:
+            raise Exception(f"Not a valid coloring feature, should be one of {self.X.columns}")
+        vals = np.sort(self.X[feature].unique())
+        genome_len = len(self.profiler.seq)
+
+        for i, cons in enumerate(vals):
+            mapping[str(cons)] = i
+
+        n_colors = 2
+        if vals.shape[0] > 2:
+            n_colors = max(8, vals.shape[0])
+
+        with sns.plotting_context(rc={"font.size": 14, "axes.titlesize": 18, "axes.labelsize": 18,
+                                      "xtick.labelsize": 14, "ytick.labelsize": 14, 'y.labelsize': 16}):
+            pal = sns.mpl_palette('seismic', n_colors)
+            with sns.plotting_context(
+                    rc={"font.size": 12, "axes.labelsize": 15, "xtick.labelsize": 14, "ytick.labelsize": 12, 'aspect': 10}):
+                f, ax = plt.subplots(figsize=(14, 4))
+                X = self.X
+                ax.plot([1, genome_len], [0, 0], color="black", alpha=0.7, linewidth=4)
+                for i, row in X.iterrows():
+                    ax.scatter([row['start'], row['end']], [0, 0], marker='s', s=2 * row['size'],
+                               c=pal[mapping[str(row[feature])]])
+            #TODO replca with a proper color bar besides the plot
+            sns.palplot(sns.mpl_palette('seismic', n_colors))
+            plt.show()
+
+
 def _make_preprocessing_pipeline():
     encoder = Pipeline([
         ("encoding", ColumnTransformer([
@@ -148,3 +180,4 @@ def _map_drops(drop_id, drop_type, data):
         return 'Repetitive'
     else:
         return 'Structural'
+
