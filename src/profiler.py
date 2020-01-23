@@ -3,7 +3,7 @@ from utils.utils import *
 
 
 class Profiler:
-    def __init__(self, seq, out_dir, w=200, l =100, alias='Seq', family='Unknown'):
+    def __init__(self, seq, out_dir=None, w=200, l =100, alias='Seq', family='Unknown'):
         self.seq = seq
         self.w = w
         self.l = l
@@ -20,9 +20,15 @@ class Profiler:
             raise Exception(f"Permiutation window size data type not valid, expected number but got {type(self.l)}")
         if not isinstance(self.alias, str):
             raise Exception(f"Sequence alias data type not valid, expected str but got {type(self.alias)}")
+        if self.w > len(self.seq):
+            raise Exception(f"Provided window size {self.w} should be smaller than sequence length {len(self.seq)}")
+        if self.l > len(self.seq):
+            raise Exception(f"Provided permutation window size {self.l} should be smaller than sequence length {len(self.seq)}")
 
         if not os.path.exists(self.out):
             os.mkdir(self.out)
+
+        self.seq = self.seq.lower()
 
     def get_profiles(self):
         """
@@ -73,4 +79,5 @@ class Profiler:
         self.get_profiles()
         self.matrix['seq_id'] = self.alias
         self.matrix['family'] = self.family
-        self.matrix.to_csv(os.path.join(self.out, f'input_mat_{self.alias}.csv'), index=False)
+        if self.out != None:
+            self.matrix.to_csv(os.path.join(self.out, f'input_mat_{self.alias}.csv'), index=False)
