@@ -16,7 +16,6 @@ def entropy_by_kmer(seq, k):
     :param k: size of the k-mer to use
     :return: entropy
     """
-
     # update kmers
     kmers = {}
     for i in range(len(seq) - k):
