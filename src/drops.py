@@ -116,7 +116,6 @@ class Drops:
     def rank_drops(self):
         """
         rank drops by previously trained GBR model
-        :return:
         """
         with open(r'../data/trained_GBR.pickle', 'wb') as f:
             mdl = pickle.load(f)
@@ -146,17 +145,15 @@ class Drops:
         if vals.shape[0] > 2:
             n_colors = max(8, vals.shape[0])
 
-        with sns.plotting_context(rc={"font.size": 14, "axes.titlesize": 18, "axes.labelsize": 18,
-                                      "xtick.labelsize": 14, "ytick.labelsize": 14, 'y.labelsize': 16}):
+        with sns.plotting_context(
+                rc={"font.size": 12, "axes.labelsize": 15, "xtick.labelsize": 14, "ytick.labelsize": 12, 'aspect': 10}):
             pal = sns.mpl_palette('seismic', n_colors)
-            with sns.plotting_context(
-                    rc={"font.size": 12, "axes.labelsize": 15, "xtick.labelsize": 14, "ytick.labelsize": 12, 'aspect': 10}):
-                f, ax = plt.subplots(figsize=(14, 4))
-                X = self.X
-                ax.plot([1, genome_len], [0, 0], color="black", alpha=0.7, linewidth=4)
-                for i, row in X.iterrows():
-                    ax.scatter([row['start'], row['end']], [0, 0], marker='s', s=2 * row['size'],
-                               c=pal[mapping[str(row[feature])]])
+            f, ax = plt.subplots(figsize=(14, 4))
+            X = self.X
+            ax.plot([1, genome_len], [0, 0], color="black", alpha=0.7, linewidth=4)
+            for i, row in X.iterrows():
+                ax.scatter([row['start'], row['end']], [0, 0], marker='s', s=2 * row['size'],
+                           c=pal[mapping[str(row[feature])]])
             #TODO replca with a proper color bar besides the plot
             sns.palplot(sns.mpl_palette('seismic', n_colors))
             plt.show()
