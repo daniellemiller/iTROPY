@@ -6,6 +6,7 @@ class Profiler:
     def __init__(self, seq, out_dir=None, w=200, l =100, alias='Seq', family='Unknown'):
         self.seq = seq
         self.w = w
+        print(self.w)
         self.l = l
         self.out = out_dir
         self.matrix = None
@@ -14,9 +15,9 @@ class Profiler:
 
         if not isinstance(self.seq, str):
             raise Exception(f"Seq data type not valid, expected string but got {type(self.seq)}")
-        if not isinstance(self.w, np.number):
+        if not isinstance(self.w, (int,float)):
             raise Exception(f"Window size data type not valid, expected a number but got {type(self.w)}")
-        if not isinstance(self.l, np.number):
+        if not isinstance(self.l, (int,float)):
             raise Exception(f"Permiutation window size data type not valid, expected number but got {type(self.l)}")
         if not isinstance(self.alias, str):
             raise Exception(f"Sequence alias data type not valid, expected str but got {type(self.alias)}")
@@ -25,8 +26,9 @@ class Profiler:
         if self.l > len(self.seq):
             raise Exception(f"Provided permutation window size {self.l} should be smaller than sequence length {len(self.seq)}")
 
-        if not os.path.exists(self.out):
+        if out_dir != None and not os.path.exists(self.out):
             os.mkdir(self.out)
+            self.out = out_dir
 
         self.seq = self.seq.lower()
 
