@@ -40,7 +40,6 @@ def fit_profiles(seq, out_dir=None, w=200, l =100, alias='Seq', family='Unknown'
     :return: fits the entropy profile and generate drops entropy drops
     """
     profiler = pf.Profiler(seq, out_dir, w, l, alias, family)
-    profiler.get_profiles()
     profiler.generate_data()
     drops = dp.Drops(profiler, k)
     drops.get_drops()
@@ -59,6 +58,7 @@ def predict(drops):
         raise Exception("Train data for prediction is not available")
 
     # Predict drop type and drop rank
+    drops.update_profiler()
     drops.categorize_drops()
     drops.rank_drops()
     return drops
