@@ -30,7 +30,7 @@ class Drops:
         all_drops = find_sequential_drops(shannon_drops, joint_drops, output=None)
         self.shannon = all_drops[all_drops['type'] == 'shannon']
         self.joint = all_drops[all_drops['type'] == 'joint']
-        self.drops = find_drops_overlaps(shannon_drops, joint_drops)
+        self.drops = find_drops_overlaps(self.shannon, self.joint)
         self.drops['drop_id'] = self.drops.apply(lambda row: "Drop {}".format(row.name), axis=1)
 
     def GMM_fit(self, k=4):
@@ -73,7 +73,8 @@ class Drops:
         for c in tqdm(self.inference_cols):
             self.profiler.matrix[c] = self.profiler.matrix[c].astype(float)
 
-        data = self.profiler.matrix.groupby(['drop_id']).agg({np.mean, np.median, np.std}).reset_index()
+        self.profiler.matrix['GMM_clusters'] = self.profiler.matrix['GMM_clusters'].astype(int)     # change to int for agg
+        data = self.profiler.matrix.groupby(['drop_id', 'seq_id', 'family']).agg({np.mean, np.median, np.std}).reset_index()
         data.columns = [' '.join(col).strip() for col in data.columns.values] # flatten columns names
         #hard coded columns for testing the model
         cols = ['DeltaG mean', 'DeltaG median', 'DeltaG std', 'GMM_clusters mean',
@@ -107,17 +108,22 @@ class Drops:
         data['T_rel_genome'] = data['nucleotide_info'].apply(lambda lst: float(lst[3][0]))
         data['T_rel_drop'] = data['nucleotide_info'].apply(lambda lst: float(lst[3][-1]))
 
+        data = data.rename(columns={'size': 'drops_size'})
         self.X = data
         return self.X
 
     def categorize_drops(self):
         self.drops['Category'] = self.drops.apply(lambda row: _map_drops(row['drop_id'], row['type'], self.X), axis=1)
+        return
 
     def rank_drops(self):
         """
         rank drops by previously trained GBR model
         """
-        with open(r'../data/trained_GBR.pickle', 'wb') as f:
+        self.X['SL'] = len(self.profiler.seq)
+        self.X['SL_class'] = 1
+        self.X['ds_class'] = 1
+        with open(r'../data/trained_GBR.pickle', 'rb') as f:
             mdl = pickle.load(f)
         pipeline = _make_preprocessing_pipeline()
         X_test = pipeline.fit_transform(self.X.drop(columns=['nucleotide_info']))
@@ -170,10 +176,10 @@ def _make_preprocessing_pipeline():
     return encoder
 
 def _map_drops(drop_id, drop_type, data):
-    value = data[data['drop_id'] == drop_id]['DeltaG median']
+    value = data[data['drop_id'] == drop_id]['DeltaG median'].values[0]
     if drop_type == 'joint':
         return 'Structural'
-    elif value <= 0.3:
+    elif value <= 0.4:
         return 'Repetitive'
     else:
         return 'Structural'
