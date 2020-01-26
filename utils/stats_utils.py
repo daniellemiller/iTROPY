@@ -42,7 +42,7 @@ def stretchFinder(profile, l, m=10**4):
 
     return data
 
-def find_sequential_drops(shannon, joint, output, t=0.05):
+def find_sequential_drops(shannon, joint, alias=None, output=None, t=0.05):
     """
     given a family generate a table of all sequential drops
     :param shannon: shannon entropy matrix
@@ -55,52 +55,48 @@ def find_sequential_drops(shannon, joint, output, t=0.05):
 
     # for each feature in the matrix calculate the number of drops. locations and sizes
 
-    for c in tqdm(shannon):
-        if c not in joint.columns:
-            continue
-        x = shannon[c].dropna()
-        y = joint[c].dropna()
+    x = shannon["p_value"].dropna()
+    y = joint["p_value"].dropna()
 
-        # get only significant drops
-        x = x[x <= t]
-        y = y[y <= t]
+    # get only significant drops
+    x = x[x <= t]
+    y = y[y <= t]
 
-        # remember index as a new column - had bugs with splitting by index later...
-        x = x.reset_index()
-        y = y.reset_index()
+    # remember index as a new column - had bugs with splitting by index later...
+    x = x.reset_index()
+    y = y.reset_index()
 
-        dx = np.diff(x['index'])
-        dy = np.diff(y['index'])
+    dx = np.diff(x['index'])
+    dy = np.diff(y['index'])
 
-        x_pos = [i + 1 for i in np.where(dx > 1)[0]]
-        y_pos = [i + 1 for i in np.where(dy > 1)[0]]
+    x_pos = [i + 1 for i in np.where(dx > 1)[0]]
+    y_pos = [i + 1 for i in np.where(dy > 1)[0]]
 
-        x_mod = [0] + x_pos + [len(x) + 1]
-        y_mod = [0] + y_pos + [len(y) + 1]
+    x_mod = [0] + x_pos + [len(x) + 1]
+    y_mod = [0] + y_pos + [len(y) + 1]
 
-        x_splits = [x.iloc[x_mod[n]:x_mod[n + 1]] for n in range(len(x_mod) - 1)]
-        y_splits = [y.iloc[y_mod[n]:y_mod[n + 1]] for n in range(len(y_mod) - 1)]
+    x_splits = [x.iloc[x_mod[n]:x_mod[n + 1]] for n in range(len(x_mod) - 1)]
+    y_splits = [y.iloc[y_mod[n]:y_mod[n + 1]] for n in range(len(y_mod) - 1)]
+    # fil start and end positions creating a dataframe for each column
+    x_starts = []
+    x_ends = []
 
-        # fil start and end positions creating a dataframe for each column
-        x_starts = []
-        x_ends = []
+    for s in x_splits:
+        x_starts.append(s['index'].iloc[0])
+        x_ends.append(s['index'].iloc[-1])
 
-        for s in x_splits:
-            x_starts.append(s['index'].iloc[0])
-            x_ends.append(s['index'].iloc[-1])
+    y_starts = []
+    y_ends = []
 
-        y_starts = []
-        y_ends = []
+    for s in y_splits:
+        y_starts.append(s['index'].iloc[0])
+        y_ends.append(s['index'].iloc[-1])
 
-        for s in y_splits:
-            y_starts.append(s['index'].iloc[0])
-            y_ends.append(s['index'].iloc[-1])
+    shannon_drops = pd.DataFrame({'start': x_starts, 'end': x_ends, 'type': 'shannon', 'seq': alias})
+    joint_drops = pd.DataFrame({'start': y_starts, 'end': y_ends, 'type': 'joint', 'seq': alias})
 
-        shannon_drops = pd.DataFrame({'start': x_starts, 'end': x_ends, 'type': 'shannon', 'seq': c})
-        joint_drops = pd.DataFrame({'start': y_starts, 'end': y_ends, 'type': 'joint', 'seq': c})
-
-        col_dfs.append(shannon_drops)
-        col_dfs.append(joint_drops)
+    col_dfs.append(shannon_drops)
+    col_dfs.append(joint_drops)
 
     drops = pd.concat(col_dfs)
     drops['size'] = drops['end'] - drops['start'] + 1
