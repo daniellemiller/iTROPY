@@ -27,7 +27,7 @@ class Drops:
         shannon_drops = stretchFinder(profile=self.profiler.matrix[f'Shannon_k{self.k}'].values, l=self.profiler.l)
         joint_drops = stretchFinder(profile=self.profiler.matrix[f'Joint_k{self.k}'].values, l=self.profiler.l)
 
-        all_drops = find_sequential_drops(shannon_drops, joint_drops, output=None)
+        all_drops = find_sequential_drops(shannon_drops, joint_drops, output=None, alias=self.profiler.alias)
         self.shannon = all_drops[all_drops['type'] == 'shannon']
         self.joint = all_drops[all_drops['type'] == 'joint']
         self.drops = find_drops_overlaps(self.shannon, self.joint)
@@ -88,7 +88,7 @@ class Drops:
                 'Shannon_k3 median', 'Shannon_k3 std', 'Shannon_k4 mean',
                 'Shannon_k4 median', 'Shannon_k4 std', 'Shannon_k5 mean',
                 'Shannon_k5 median', 'Shannon_k5 std', 'drop_id', 'family',
-                'position mean', 'seq_id']
+                'position mean','rank mean','rank median','rank std', 'seq_id']
         data = data[cols]
 
         # rename columns
@@ -108,13 +108,14 @@ class Drops:
         data['T_rel_genome'] = data['nucleotide_info'].apply(lambda lst: float(lst[3][0]))
         data['T_rel_drop'] = data['nucleotide_info'].apply(lambda lst: float(lst[3][-1]))
 
-        data = data.rename(columns={'size': 'drops_size'})
+        data = data.rename(columns={'size': 'drop_size'})
         self.X = data
         return self.X
 
     def categorize_drops(self):
         self.drops['Category'] = self.drops.apply(lambda row: _map_drops(row['drop_id'], row['type'], self.X), axis=1)
-        return
+        self.X['Category'] = self.drops['Category']
+
 
     def rank_drops(self):
         """
@@ -122,11 +123,11 @@ class Drops:
         """
         self.X['SL'] = len(self.profiler.seq)
         self.X['SL_class'] = 1
-        self.X['ds_class'] = 1
+        self.X['DS_class'] = 1
         with open(r'../data/trained_GBR.pickle', 'rb') as f:
             mdl = pickle.load(f)
         pipeline = _make_preprocessing_pipeline()
-        X_test = pipeline.fit_transform(self.X.drop(columns=['nucleotide_info']))
+        X_test = pipeline.fit_transform(self.X.drop(columns=['nucleotide_info', 'Category']))
         predicted = mdl.predict(X_test)
         #get ranking and not predicted value (https://stackoverflow.com/questions/5284646/rank-items-in-an-array-using-python-numpy-without-sorting-array-twice/)
         temp = predicted.argsort()
@@ -135,6 +136,9 @@ class Drops:
         self.X['rank'] = ranks
 
         self.drops = pd.merge(self.drops, self.X[['drop_id', 'rank']], on=['drop_id']).sort_values(by=['rank'])
+        if self.profiler.out != None:
+            self.drops.to_csv(os.path.join(self.profiler.out, f'Drops_{self.profiler.alias}.csv'), index=False)
+
 
 
     def dropplot(self, feature='rank'):
@@ -152,16 +156,21 @@ class Drops:
             n_colors = max(8, vals.shape[0])
 
         with sns.plotting_context(
-                rc={"font.size": 12, "axes.labelsize": 15, "xtick.labelsize": 14, "ytick.labelsize": 12, 'aspect': 10}):
+                rc={"font.size": 14, "axes.labelsize": 15, "xtick.labelsize": 14, "ytick.labelsize": 12, 'aspect': 10}):
             pal = sns.mpl_palette('seismic', n_colors)
             f, ax = plt.subplots(figsize=(14, 4))
             X = self.X
             ax.plot([1, genome_len], [0, 0], color="black", alpha=0.7, linewidth=4)
             for i, row in X.iterrows():
-                ax.scatter([row['start'], row['end']], [0, 0], marker='s', s=2 * row['size'],
+                ax.scatter([row['start'], row['end']], [0, 0], marker='s', s=2 * row['drop_size'],
                            c=pal[mapping[str(row[feature])]])
             #TODO replca with a proper color bar besides the plot
-            sns.palplot(sns.mpl_palette('seismic', n_colors))
+            plt.title(self.profiler.alias + '\nBy: ' + feature)
+            if self.profiler.out != None:
+                plt.savefig(os.path.join(self.profiler.out, f'{self.profiler.alias}_{feature}_profile.png'), format='png',
+                                bbox_inches='tight', dpi=400)
+
+            #sns.palplot(sns.mpl_palette('seismic', n_colors))
             plt.show()
 
 
@@ -177,10 +186,18 @@ def _make_preprocessing_pipeline():
 
 def _map_drops(drop_id, drop_type, data):
     value = data[data['drop_id'] == drop_id]['DeltaG median'].values[0]
+    # normalized to [0,1]
+    value = (value - data['DeltaG median'].min()) / \
+            (data['DeltaG median'].max() - data['DeltaG median'].min())
     if drop_type == 'joint':
         return 'Structural'
     elif value <= 0.4:
         return 'Repetitive'
     else:
         return 'Structural'
+
+
+def _add_feature_data(drop_id, data, feature='DeltaG median'):
+     return data[data['drop_id'] == drop_id][feature].values[0]
+
 
