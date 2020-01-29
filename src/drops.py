@@ -114,7 +114,7 @@ class Drops:
 
     def categorize_drops(self):
         self.drops['Category'] = self.drops.apply(lambda row: _map_drops(row['drop_id'], row['type'], self.X), axis=1)
-        self.X['Category'] = self.drops['Category']
+        self.X = pd.merge(self.X, self.drops[['drop_id', 'Category']], on=['drop_id'])
 
 
     def rank_drops(self):
@@ -138,6 +138,7 @@ class Drops:
         self.drops = pd.merge(self.drops, self.X[['drop_id', 'rank']], on=['drop_id']).sort_values(by=['rank'])
         if self.profiler.out != None:
             self.drops.to_csv(os.path.join(self.profiler.out, f'Drops_{self.profiler.alias}.csv'), index=False)
+            self.X.to_csv(os.path.join(self.profiler.out, f'TEST_{self.profiler.alias}.csv'), index=False)
 
 
 
@@ -145,6 +146,10 @@ class Drops:
         mapping = {}
         if feature not in self.X.columns:
             raise Exception(f"Not a valid coloring feature, should be one of {self.X.columns}")
+        # if feature == 'DeltaG median':
+        #     self.X['DeltaG median scaled'] = self.X['DeltaG median'].apply(lambda x: (x - self.X['DeltaG median'].min()) / \
+        #     (self.X['DeltaG median'].max() - self.X['DeltaG median'].min()))
+        #     feature = 'DeltaG median scaled'
         vals = np.sort(self.X[feature].unique())
         genome_len = len(self.profiler.seq)
 
@@ -165,6 +170,9 @@ class Drops:
                 ax.scatter([row['start'], row['end']], [0, 0], marker='s', s=2 * row['drop_size'],
                            c=pal[mapping[str(row[feature])]])
             #TODO replca with a proper color bar besides the plot
+            plt.yticks([])
+            sns.despine(top=True, left=True, right=True)
+            plt.xlabel('Genome position')
             plt.title(self.profiler.alias + '\nBy: ' + feature)
             if self.profiler.out != None:
                 plt.savefig(os.path.join(self.profiler.out, f'{self.profiler.alias}_{feature}_profile.png'), format='png',
